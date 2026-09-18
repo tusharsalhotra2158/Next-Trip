@@ -1,6 +1,8 @@
 require('./load-env');
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const { destinations, locationsByDestination, getOrCreateDestination } = require('./data/destinations');
 const { searchPlaces, listCountries, listStates, listCities, geocodePlace } = require('./data/citySearch');
 const { aiSearchPlaces } = require('./data/geminiSearch');
@@ -11,12 +13,45 @@ const { mockTransportOptions, mockRoadConditions } = require('./data/transport')
 const { buildPackingList } = require('./data/packing');
 const { getDestinationNews } = require('./data/news');
 const { buildBudgetEstimate } = require('./data/budget');
+const { signup, login, authenticate } = require('./data/auth');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-app.use(cors());
-app.use(express.json());
+// Comma-separated list of allowed browser origins, e.g. "http://localhost:4200,https://app.example.com".
+// Defaults to the Angular dev server so local development keeps working out of the box.
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:4200').split(',').map((o) => o.trim());
+
+app.use(helmet());
+app.use(
+  cors({
+    origin(origin, callback) {
+      // Allow non-browser tools (curl, server-to-server) which send no Origin header.
+      if (!origin || ALLOWED_ORIGINS.includes(origin)) return callback(null, true);
+      callback(new Error('Not allowed by CORS'));
+    },
+  }),
+);
+app.use(express.json({ limit: '100kb' }));
+
+// General limiter for the whole API, plus a stricter one for routes that
+// proxy to metered/paid third-party APIs (Gemini, GNews) to bound cost/quota
+// exposure from a single abusive client.
+app.use(
+  rateLimit({
+    windowMs: 60 * 1000,
+    limit: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+  }),
+);
+const externalApiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'Too many requests, please try again shortly.' },
+});
 
 // In-memory stores for user-created data (reset on server restart).
 const trips = new Map();
@@ -26,6 +61,62 @@ let dayCounter = 1;
 
 const ok = (data, extra = {}) => ({ success: true, data, ...extra });
 const fail = (message, code = 404) => ({ success: false, error: message, message });
+
+// Clamp a request-supplied number into [min, max], falling back to `def` when
+// missing/invalid. Used anywhere a client-controlled count (days, limit, …)
+// would otherwise drive an unbounded loop or array allocation.
+const clampInt = (value, def, min, max) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return def;
+  return Math.min(max, Math.max(min, Math.trunc(n)));
+};
+
+// Trip/itinerary endpoints require a verified session (see `authenticate` in
+// backend/src/data/auth.js, which sets req.userId from a signed JWT — never
+// from a client-supplied header) and require req.userId to match the trip's
+// owner, so one user can't read/modify/delete another user's trip just by
+// guessing its sequential id.
+function requireTripOwner(req, res, next) {
+  const trip = trips.get(req.params.tripId);
+  if (!trip) return res.status(404).json(fail('Trip not found'));
+
+  if (req.userId !== trip.userId) {
+    return res.status(403).json(fail('You do not have access to this trip', 403));
+  }
+
+  req.trip = trip;
+  next();
+}
+
+// ==================== AUTH ====================
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { success: false, error: 'Too many attempts, please try again later.' },
+});
+
+app.post('/api/v1/auth/signup', authLimiter, async (req, res, next) => {
+  try {
+    const { firstName, lastName, email, password } = req.body;
+    const user = await signup({ firstName, lastName, email, password });
+    res.status(201).json(ok({ user }, { message: 'Account created successfully. Please login.' }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/v1/auth/login', authLimiter, async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+    const { user, token } = await login({ email, password });
+    res.json(ok({ user, token }, { message: 'Login successful' }));
+  } catch (error) {
+    next(error);
+  }
+});
 
 // ==================== DESTINATIONS ====================
 
@@ -109,11 +200,12 @@ app.get('/api/v1/locations/cities', (req, res) => {
   res.json(ok(result.results, { count: result.results.length, total: result.total }));
 });
 
-app.get('/api/v1/locations/autocomplete', async (req, res) => {
+app.get('/api/v1/locations/autocomplete', externalApiLimiter, async (req, res) => {
   const q = (req.query.q || '').toString().trim();
   if (!q) return res.status(400).json(fail('q query param is required', 400));
 
-  const { type, country, state, limit, locale } = req.query;
+  const { type, country, state, locale } = req.query;
+  const limit = clampInt(req.query.limit, 10, 1, 25);
   const result = await searchPlaces({ q, type, country, state, limit, locale });
   res.json(ok(result.results, { source: result.source, disclaimer: result.disclaimer }));
 });
@@ -121,11 +213,11 @@ app.get('/api/v1/locations/autocomplete', async (req, res) => {
 // Natural-language place search via Gemini (see backend/src/data/geminiSearch.js).
 // Separate from /locations/autocomplete: this handles free-form queries like
 // "quiet beach towns in Kerala" that the offline structured search can't.
-app.get('/api/v1/locations/ai-search', async (req, res) => {
+app.get('/api/v1/locations/ai-search', externalApiLimiter, async (req, res) => {
   const q = (req.query.q || '').toString().trim();
   if (!q) return res.status(400).json(fail('q query param is required', 400));
 
-  const { limit } = req.query;
+  const limit = clampInt(req.query.limit, 6, 1, 10);
   const result = await aiSearchPlaces({ q, limit });
   res.json(ok(result.results, { source: result.source, disclaimer: result.disclaimer }));
 });
@@ -140,7 +232,7 @@ app.get('/api/v1/locations/ai-search', async (req, res) => {
 // it's unnecessary round-trip that can fail (network/rate-limit) for data we
 // already have locally, and was the cause of "picking an India city doesn't
 // work" reports.
-app.get('/api/v1/locations/resolve', async (req, res) => {
+app.get('/api/v1/locations/resolve', externalApiLimiter, async (req, res) => {
   const name = (req.query.name || '').toString().trim();
   if (!name) return res.status(400).json(fail('name query param is required', 400));
 
@@ -148,8 +240,10 @@ app.get('/api/v1/locations/resolve', async (req, res) => {
   const country = (req.query.country || '').toString().trim();
   const lat = req.query.lat !== undefined ? Number(req.query.lat) : null;
   const lng = req.query.lng !== undefined ? Number(req.query.lng) : null;
+  const validLat = lat !== null && !Number.isNaN(lat) && lat >= -90 && lat <= 90;
+  const validLng = lng !== null && !Number.isNaN(lng) && lng >= -180 && lng <= 180;
 
-  if (lat !== null && lng !== null && !Number.isNaN(lat) && !Number.isNaN(lng)) {
+  if (validLat && validLng) {
     const destination = getOrCreateDestination({ name, country: country || countryCode, lat, lng });
     return res.json(ok(destination));
   }
@@ -173,16 +267,26 @@ app.get('/api/v1/locations/resolve', async (req, res) => {
 
 // ==================== TRIPS ====================
 
-app.post('/api/v1/trips', (req, res) => {
+// Fields a client is allowed to set/update on a trip. Anything else
+// (id, userId, createdAt, …) is server-controlled to prevent mass-assignment
+// clients from reassigning ownership or corrupting bookkeeping fields.
+const TRIP_WRITABLE_FIELDS = ['name', 'startDate', 'endDate', 'destinationId', 'status', 'budget'];
+const pickWritable = (body, fields) =>
+  fields.reduce((acc, key) => {
+    if (body[key] !== undefined) acc[key] = body[key];
+    return acc;
+  }, {});
+
+app.post('/api/v1/trips', authenticate, (req, res) => {
   const id = `trip_${tripCounter++}`;
   const now = new Date().toISOString();
   const trip = {
     id,
-    userId: req.body.userId || 'anonymous',
+    userId: req.userId,
+    ...pickWritable(req.body, TRIP_WRITABLE_FIELDS),
     name: req.body.name || 'Untitled Trip',
     startDate: req.body.startDate || now,
     endDate: req.body.endDate || now,
-    destinationId: req.body.destinationId,
     status: 'draft',
     budget: req.body.budget ?? 0,
     createdAt: now,
@@ -192,38 +296,36 @@ app.post('/api/v1/trips', (req, res) => {
   res.status(201).json(ok(trip));
 });
 
-app.get('/api/v1/users/:userId/trips', (req, res) => {
+// A user may only list their own trips: the verified session's userId must
+// match the userId they're asking for (see requireTripOwner above).
+app.get('/api/v1/users/:userId/trips', authenticate, (req, res) => {
+  if (req.userId !== req.params.userId) {
+    return res.status(403).json(fail('You do not have access to this user\'s trips', 403));
+  }
   const userTrips = Array.from(trips.values()).filter((t) => t.userId === req.params.userId);
   res.json(ok(userTrips, { count: userTrips.length }));
 });
 
-app.get('/api/v1/trips/:tripId', (req, res) => {
-  const trip = trips.get(req.params.tripId);
-  if (!trip) return res.status(404).json(fail('Trip not found'));
-  res.json(ok(trip));
+app.get('/api/v1/trips/:tripId', authenticate, requireTripOwner, (req, res) => {
+  res.json(ok(req.trip));
 });
 
-app.put('/api/v1/trips/:tripId', (req, res) => {
-  const trip = trips.get(req.params.tripId);
-  if (!trip) return res.status(404).json(fail('Trip not found'));
-  Object.assign(trip, req.body, { updatedAt: new Date().toISOString() });
-  res.json(ok(trip));
+app.put('/api/v1/trips/:tripId', authenticate, requireTripOwner, (req, res) => {
+  Object.assign(req.trip, pickWritable(req.body, TRIP_WRITABLE_FIELDS), { updatedAt: new Date().toISOString() });
+  res.json(ok(req.trip));
 });
 
-app.delete('/api/v1/trips/:tripId', (req, res) => {
-  const existed = trips.delete(req.params.tripId);
+app.delete('/api/v1/trips/:tripId', authenticate, requireTripOwner, (req, res) => {
+  trips.delete(req.params.tripId);
   itinerariesByTrip.delete(req.params.tripId);
-  if (!existed) return res.status(404).json(fail('Trip not found'));
   res.json(ok(null, { message: 'Trip deleted' }));
 });
 
 // ==================== ITINERARIES ====================
 
-app.post('/api/v1/trips/:tripId/itineraries/generate', (req, res) => {
-  const trip = trips.get(req.params.tripId);
-  if (!trip) return res.status(404).json(fail('Trip not found'));
-
-  const days = Number(req.body.days) || 3;
+app.post('/api/v1/trips/:tripId/itineraries/generate', authenticate, requireTripOwner, (req, res) => {
+  const trip = req.trip;
+  const days = clampInt(req.body.days, 3, 1, 30);
   const perDayBudget = trip.budget ? Math.round(trip.budget / days) : 0;
 
   const generatedDays = Array.from({ length: days }, (_, i) => ({
@@ -245,16 +347,22 @@ app.post('/api/v1/trips/:tripId/itineraries/generate', (req, res) => {
   res.json(ok(generatedDays, { count: generatedDays.length }));
 });
 
-app.get('/api/v1/trips/:tripId/itineraries', (req, res) => {
+app.get('/api/v1/trips/:tripId/itineraries', authenticate, requireTripOwner, (req, res) => {
   const itinerary = itinerariesByTrip.get(req.params.tripId) || [];
   res.json(ok(itinerary, { count: itinerary.length }));
 });
 
-app.put('/api/v1/itineraries/:dayId', (req, res) => {
-  for (const days of itinerariesByTrip.values()) {
+const ITINERARY_DAY_WRITABLE_FIELDS = ['title', 'description', 'budgetAllocated', 'activities'];
+
+app.put('/api/v1/itineraries/:dayId', authenticate, (req, res) => {
+  for (const [tripId, days] of itinerariesByTrip.entries()) {
     const day = days.find((d) => d.id === req.params.dayId);
     if (day) {
-      Object.assign(day, req.body);
+      const trip = trips.get(tripId);
+      if (!trip || req.userId !== trip.userId) {
+        return res.status(403).json(fail('You do not have access to this itinerary day', 403));
+      }
+      Object.assign(day, pickWritable(req.body, ITINERARY_DAY_WRITABLE_FIELDS));
       return res.json(ok(day));
     }
   }
@@ -295,7 +403,7 @@ app.get('/api/v1/weather/current/:destinationId', (req, res) => {
 });
 
 app.get('/api/v1/weather/forecast/:destinationId', (req, res) => {
-  const days = Number(req.query.days) || 7;
+  const days = clampInt(req.query.days, 7, 1, 30);
   res.json(ok(forecastFor(req.params.destinationId, days)));
 });
 
@@ -337,7 +445,7 @@ app.get('/api/v1/destinations/:id/itinerary-suggestion', (req, res) => {
   if (!locations) return res.status(404).json(fail('Destination not found'));
 
   const minDaysRequired = suggestMinDays(locations);
-  const requestedDays = Math.max(1, Number(req.query.days) || minDaysRequired);
+  const requestedDays = clampInt(req.query.days, minDaysRequired, 1, 30);
   const { plan, uncoveredCount } = buildItinerary(locations, requestedDays);
 
   res.json(
@@ -382,7 +490,7 @@ app.get('/api/v1/destinations/:id/packing-list', async (req, res) => {
   if (!destination) return res.status(404).json(fail('Destination not found'));
 
   const { startDate, endDate } = req.query;
-  const days = Number(req.query.days) || 3;
+  const days = clampInt(req.query.days, 3, 1, 30);
 
   try {
     let weatherDays = [];
@@ -399,7 +507,7 @@ app.get('/api/v1/destinations/:id/packing-list', async (req, res) => {
 
 // ==================== NEWS ====================
 
-app.get('/api/v1/news', async (req, res) => {
+app.get('/api/v1/news', externalApiLimiter, async (req, res) => {
   const query = (req.query.q || '').toString().trim();
   if (!query) return res.status(400).json(fail('q query param is required', 400));
 
@@ -413,8 +521,8 @@ app.get('/api/v1/budget-estimate', (req, res) => {
   const destination = destinations.find((d) => d.id === req.query.destinationId);
   if (!destination) return res.status(404).json(fail('Destination not found'));
 
-  const days = Math.max(1, Number(req.query.days) || 1);
-  const travelers = Math.max(1, Number(req.query.travelers) || 1);
+  const days = clampInt(req.query.days, 1, 1, 60);
+  const travelers = clampInt(req.query.travelers, 1, 1, 20);
   const vehicleType = req.query.vehicleType;
   const distanceKm = req.query.distanceKm ? Number(req.query.distanceKm) : undefined;
 
@@ -437,6 +545,16 @@ app.get('/api/v1/health', (req, res) => {
 
 app.use((req, res) => {
   res.status(404).json(fail(`Not found: ${req.method} ${req.path}`));
+});
+
+// Centralized error handler: never leak stack traces or raw error internals
+// to the client, regardless of NODE_ENV.
+app.use((err, req, res, next) => {
+  if (err.message === 'Not allowed by CORS') {
+    return res.status(403).json(fail('Origin not allowed', 403));
+  }
+  console.error('Unhandled error:', err.stack || err.message);
+  res.status(err.status || 500).json(fail('Internal server error', err.status || 500));
 });
 
 app.listen(PORT, () => {

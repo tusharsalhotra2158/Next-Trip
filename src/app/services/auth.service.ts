@@ -1,106 +1,70 @@
-import { Inject, Injectable, PLATFORM_ID } from '@angular/core';
+import { Inject, Injectable, PLATFORM_ID, inject } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
-import { Observable, of, throwError } from 'rxjs';
-import { delay } from 'rxjs/operators';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
+import { map, tap, catchError } from 'rxjs/operators';
+import { throwError } from 'rxjs';
+import { environment } from '../../environments/environment';
 
-interface UserData {
+interface SignupData {
   firstName: string;
   lastName: string;
   email: string;
   password: string;
 }
 
-interface LoginResponse {
-  success: boolean;
-  message: string;
-  token: string;
-  user: {
-    id: string;
-    email: string;
-    firstName: string;
-    lastName: string;
-  };
+interface AuthUser {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
 }
 
+interface ApiEnvelope<T> {
+  success: boolean;
+  message?: string;
+  error?: string;
+  data: T;
+}
+
+// Auth is delegated entirely to the backend (backend/src/data/auth.js):
+// passwords are hashed there with bcrypt and sessions are signed JWTs, never
+// checked or stored in plaintext client-side.
 @Injectable({
   providedIn: 'root'
 })
 export class AuthService {
-  private isAuthenticated = false;
-  private users: Map<string, UserData> = new Map();
-  private currentUser: any = null;
+  private http = inject(HttpClient);
+  private apiUrl = environment.apiUrl;
+  private currentUser: AuthUser | null = null;
   private readonly isBrowser: boolean;
 
   constructor(@Inject(PLATFORM_ID) platformId: object) {
     this.isBrowser = isPlatformBrowser(platformId);
-    this.initializeDemoData();
   }
 
-  private initializeDemoData() {
-    this.users.set('user@example.com', {
-      firstName: 'John',
-      lastName: 'Doe',
-      email: 'user@example.com',
-      password: 'password123'
-    });
+  login(email: string, password: string): Observable<{ user: AuthUser; token: string }> {
+    return this.http.post<ApiEnvelope<{ user: AuthUser; token: string }>>(`${this.apiUrl}/auth/login`, { email, password }).pipe(
+      map((res) => res.data),
+      tap(({ user, token }) => {
+        this.currentUser = user;
+        if (this.isBrowser) {
+          localStorage.setItem('authToken', token);
+          localStorage.setItem('currentUser', JSON.stringify(user));
+        }
+      }),
+      catchError((err) => throwError(() => ({ message: err.error?.message || 'Invalid email or password' }))),
+    );
   }
 
-  login(email: string, password: string): Observable<LoginResponse> {
-    const user = this.users.get(email);
-
-    if (!user || user.password !== password) {
-      return throwError(() => ({
-        message: 'Invalid email or password'
-      }));
-    }
-
-    const response: LoginResponse = {
-      success: true,
-      message: 'Login successful',
-      token: `token_${Date.now()}`,
-      user: {
-        id: `user_${email}`,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName
-      }
-    };
-
-    this.isAuthenticated = true;
-    this.currentUser = response.user;
-    if (this.isBrowser) {
-      localStorage.setItem('authToken', response.token);
-      localStorage.setItem('currentUser', JSON.stringify(response.user));
-    }
-
-    return of(response).pipe(delay(500));
-  }
-
-  signup(userData: UserData): Observable<any> {
-    if (this.users.has(userData.email)) {
-      return throwError(() => ({
-        message: 'Email already exists'
-      }));
-    }
-
-    this.users.set(userData.email, userData);
-
-    const response = {
-      success: true,
-      message: 'Account created successfully. Please login.',
-      user: {
-        id: `user_${userData.email}`,
-        email: userData.email,
-        firstName: userData.firstName,
-        lastName: userData.lastName
-      }
-    };
-
-    return of(response).pipe(delay(500));
+  signup(userData: SignupData): Observable<{ user: AuthUser }> {
+    return this.http.post<ApiEnvelope<{ user: AuthUser }>>(`${this.apiUrl}/auth/signup`, userData).pipe(
+      map((res) => res.data),
+      catchError((err) => throwError(() => ({ message: err.error?.message || 'Signup failed. Please try again.' }))),
+    );
   }
 
   logout(): void {
-    this.isAuthenticated = false;
     this.currentUser = null;
     if (this.isBrowser) {
       localStorage.removeItem('authToken');
@@ -110,11 +74,11 @@ export class AuthService {
 
   isLoggedIn(): boolean {
     if (!this.isBrowser) return false;
-    const token = localStorage.getItem('authToken');
-    return token ? true : false;
+    return !!localStorage.getItem('authToken');
   }
 
-  getCurrentUser() {
+  getCurrentUser(): AuthUser | null {
+    if (this.currentUser) return this.currentUser;
     if (!this.isBrowser) return null;
     const user = localStorage.getItem('currentUser');
     return user ? JSON.parse(user) : null;

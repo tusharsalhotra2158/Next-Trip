@@ -9,6 +9,7 @@ import { TravelApiService, Destination, Location, TransportOptions, RoadConditio
 import { MapContainerComponent, TripRouteInfo } from '../../components/map-container/map-container';
 import { SearchAutocompleteComponent } from '../../components/search-autocomplete/search-autocomplete';
 import { TripPlannerComponent } from '../../components/trip-planner/trip-planner';
+import { AuthService } from '../../../../services/auth.service';
 
 @Component({
   selector: 'app-destination-search',
@@ -876,6 +877,7 @@ export class DestinationSearchComponent implements OnInit, OnDestroy {
   constructor(
     private travelApi: TravelApiService,
     private router: Router,
+    private authService: AuthService,
   ) {}
 
   ngOnInit() {
@@ -1019,10 +1021,14 @@ export class DestinationSearchComponent implements OnInit, OnDestroy {
 
   createTrip() {
     if (!this.selectedDestination) return;
+    if (!this.authService.isLoggedIn()) {
+      this.router.navigate(['/login']);
+      return;
+    }
 
-    // Create trip and navigate to itinerary
+    // Create trip and navigate to itinerary. travelApi.createTrip() attaches
+    // the current logged-in user's id server-side; no need to set it here.
     const tripData: any = {
-      userId: 'user_123', // TODO: Get from auth service
       name: `${this.selectedDestination.name} Trip`,
       startDate: new Date(),
       endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),

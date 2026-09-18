@@ -1,7 +1,8 @@
 import { Injectable, inject } from '@angular/core';
-import { HttpClient, HttpParams } from '@angular/common/http';
+import { HttpClient, HttpParams, HttpHeaders } from '@angular/common/http';
 import { Observable, BehaviorSubject } from 'rxjs';
 import { environment } from '../../../../environments/environment';
+import { AuthService } from '../../../services/auth.service';
 
 export interface Destination {
   id: string;
@@ -167,6 +168,16 @@ export interface PlaceSuggestion {
 export class TravelApiService {
   private http = inject(HttpClient);
   private apiUrl = environment.apiUrl;
+  private auth = inject(AuthService);
+
+  // Attaches the signed session token so the backend's `authenticate`
+  // middleware can verify who's calling (see backend/src/data/auth.js) —
+  // trip/itinerary endpoints derive the owner from this token, not from
+  // anything the client claims directly.
+  private ownerHeaders(): HttpHeaders {
+    const token = this.auth.getAuthToken() || '';
+    return new HttpHeaders(token ? { Authorization: `Bearer ${token}` } : {});
+  }
 
   // Cached data
   private destinationsCache = new BehaviorSubject<Destination[]>([]);
@@ -305,21 +316,26 @@ export class TravelApiService {
   // ==================== TRIPS ====================
 
   createTrip(tripData: Partial<Trip>): Observable<ApiResponse<Trip>> {
+    // userId is not sent — the backend derives the owner from the verified
+    // session token (see ownerHeaders()) rather than trusting a client value.
     return this.http.post<ApiResponse<Trip>>(
       `${this.apiUrl}/trips`,
       tripData,
+      { headers: this.ownerHeaders() },
     );
   }
 
   getUserTrips(userId: string): Observable<ApiResponse<Trip[]>> {
     return this.http.get<ApiResponse<Trip[]>>(
       `${this.apiUrl}/users/${userId}/trips`,
+      { headers: this.ownerHeaders() },
     );
   }
 
   getTripById(tripId: string): Observable<ApiResponse<Trip>> {
     return this.http.get<ApiResponse<Trip>>(
       `${this.apiUrl}/trips/${tripId}`,
+      { headers: this.ownerHeaders() },
     );
   }
 
@@ -330,12 +346,14 @@ export class TravelApiService {
     return this.http.put<ApiResponse<Trip>>(
       `${this.apiUrl}/trips/${tripId}`,
       updates,
+      { headers: this.ownerHeaders() },
     );
   }
 
   deleteTrip(tripId: string): Observable<ApiResponse<any>> {
     return this.http.delete<ApiResponse<any>>(
       `${this.apiUrl}/trips/${tripId}`,
+      { headers: this.ownerHeaders() },
     );
   }
 
@@ -349,12 +367,14 @@ export class TravelApiService {
     return this.http.post<ApiResponse<ItineraryDay[]>>(
       `${this.apiUrl}/trips/${tripId}/itineraries/generate`,
       { tripId, days, interests },
+      { headers: this.ownerHeaders() },
     );
   }
 
   getTripItinerary(tripId: string): Observable<ApiResponse<ItineraryDay[]>> {
     return this.http.get<ApiResponse<ItineraryDay[]>>(
       `${this.apiUrl}/trips/${tripId}/itineraries`,
+      { headers: this.ownerHeaders() },
     );
   }
 
@@ -365,6 +385,7 @@ export class TravelApiService {
     return this.http.put<ApiResponse<ItineraryDay>>(
       `${this.apiUrl}/itineraries/${dayId}`,
       updates,
+      { headers: this.ownerHeaders() },
     );
   }
 
