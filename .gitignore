@@ -1,0 +1,70 @@
+# Dependencies
+node_modules/
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Build outputs
+/dist
+/build
+/out
+/tmp
+/bazel-out
+
+# Angular
+.angular/
+.ng/
+
+# IDEs and editors
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+!.vscode/mcp.json
+.idea/
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE
+.history/*
+*.swp
+*.swo
+*~
+.vs/
+.vscode-test
+
+# Testing
+/coverage
+.nyc_output
+testem.log
+__screenshots__/
+
+# Misc
+.cache/
+.temp/
+tmp/
+temp/
+/libpeerconnection.log
+/connect.lock
+.sass-cache/
+/typings

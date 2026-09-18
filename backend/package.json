@@ -1,0 +1,16 @@
+{
+  "name": "guide-me-api",
+  "version": "1.0.0",
+  "description": "Minimal in-memory Travel API backend for the guide-me Angular app",
+  "private": true,
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "country-state-city": "^3.2.1",
+    "express": "^4.19.2"
+  }
+}
