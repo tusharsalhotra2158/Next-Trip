@@ -7,7 +7,7 @@
   },
   "newProjectRoot": "projects",
   "projects": {
-    "guide-me": {
+    "next-trip": {
       "projectType": "application",
       "schematics": {},
       "root": "",
@@ -71,10 +71,10 @@
           "builder": "@angular/build:dev-server",
           "configurations": {
             "production": {
-              "buildTarget": "guide-me:build:production"
+              "buildTarget": "next-trip:build:production"
             },
             "development": {
-              "buildTarget": "guide-me:build:development"
+              "buildTarget": "next-trip:build:development"
             }
           },
           "defaultConfiguration": "development"

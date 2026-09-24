@@ -1,4 +1,4 @@
-# Next Trip (guide-me)
+# Next Trip
 
 Next Trip is a travel planning web app that helps you find a destination, understand what to expect once you're there, and put together a day-by-day itinerary — all in one place instead of juggling a search engine, a weather site, and a spreadsheet.
 

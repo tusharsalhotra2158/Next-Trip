@@ -1,0 +1,163 @@
+.site-header {
+  background: var(--travel-forest);
+  box-shadow: var(--travel-shadow);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.site-header__inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 14px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+  color: var(--travel-cream);
+}
+
+.brand__icon {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+}
+
+.brand__name {
+  font-family: 'Poppins', 'Inter', sans-serif;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.menu-toggle {
+  display: none;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 26px;
+  height: 20px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.menu-toggle span {
+  display: block;
+  height: 2px;
+  width: 100%;
+  background: var(--travel-cream);
+  border-radius: 2px;
+}
+
+.site-nav {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.site-nav__link {
+  color: var(--travel-cream);
+  text-decoration: none;
+  font-size: 15px;
+  font-weight: 500;
+  opacity: 0.85;
+  transition: opacity 0.2s;
+}
+
+.site-nav__link:hover,
+.site-nav__link.is-active {
+  opacity: 1;
+  text-decoration: underline;
+  text-decoration-color: var(--travel-terracotta);
+  text-decoration-thickness: 2px;
+}
+
+.site-nav__auth {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: 8px;
+}
+
+.site-nav__user {
+  color: var(--travel-cream);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 18px;
+  border-radius: 999px;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.btn--outline {
+  background: transparent;
+  border-color: var(--travel-cream);
+  color: var(--travel-cream);
+}
+
+.btn--outline:hover {
+  background: rgba(250, 245, 236, 0.12);
+}
+
+.btn--solid {
+  background: var(--travel-terracotta);
+  color: var(--travel-cream);
+}
+
+.btn--solid:hover {
+  background: var(--travel-terracotta-dark);
+}
+
+@media (max-width: 720px) {
+  .menu-toggle {
+    display: flex;
+  }
+
+  .site-nav {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--travel-forest);
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+    padding: 16px 24px 22px;
+    display: none;
+    box-shadow: var(--travel-shadow);
+  }
+
+  .site-nav--open {
+    display: flex;
+  }
+
+  .site-nav__auth {
+    margin-left: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .btn {
+    width: 100%;
+  }
+}

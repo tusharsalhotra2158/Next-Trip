@@ -1,10 +1,10 @@
 .login-container {
-  min-height: 100vh;
+  min-height: 60vh;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  padding: 1rem;
+  background: linear-gradient(135deg, var(--travel-forest, #1f4d3e) 0%, var(--travel-forest-dark, #163a2e) 100%);
+  padding: 3rem 1rem;
 }
 
 .login-card {
@@ -63,8 +63,8 @@
 
 .form-group input:focus {
   outline: none;
-  border-color: #667eea;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: var(--travel-terracotta, #f2643c);
+  box-shadow: 0 0 0 3px rgba(242, 100, 60, 0.15);
 }
 
 .error-message {
@@ -78,7 +78,7 @@
 
 .login-btn {
   padding: 0.875rem 1.5rem;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: var(--travel-terracotta, #f2643c);
   color: white;
   border: none;
   border-radius: 8px;
@@ -91,7 +91,8 @@
 
 .login-btn:hover:not(:disabled) {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+  background: var(--travel-terracotta-dark, #d8502b);
+  box-shadow: 0 6px 20px rgba(242, 100, 60, 0.35);
 }
 
 .login-btn:disabled {
@@ -111,7 +112,7 @@
 }
 
 .signup-link {
-  color: #667eea;
+  color: var(--travel-terracotta, #f2643c);
   text-decoration: none;
   font-weight: 600;
   cursor: pointer;
@@ -119,7 +120,7 @@
 }
 
 .signup-link:hover {
-  color: #764ba2;
+  color: var(--travel-terracotta-dark, #d8502b);
 }
 
 @media (max-width: 480px) {

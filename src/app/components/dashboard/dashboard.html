@@ -1,14 +1,4 @@
 <div class="dashboard-container">
-  <nav class="navbar">
-    <div class="navbar-content">
-      <h2 class="navbar-brand">Dashboard</h2>
-      <div class="user-menu">
-        <span class="user-name">{{ currentUser?.firstName }} {{ currentUser?.lastName }}</span>
-        <button (click)="logout()" class="logout-btn">Logout</button>
-      </div>
-    </div>
-  </nav>
-
   <main class="dashboard-content">
     <div class="welcome-card">
       <h1>Welcome, {{ currentUser?.firstName }}! 👋</h1>
