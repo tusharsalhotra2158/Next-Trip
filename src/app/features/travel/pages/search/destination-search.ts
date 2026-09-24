@@ -1,22 +1,26 @@
 import { Component, OnInit, OnDestroy } from '@angular/core';
-import { CommonModule } from '@angular/common';
+import { CommonModule, formatCurrency } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Router } from '@angular/router';
 import { Subject } from 'rxjs';
 import { takeUntil, debounceTime, distinctUntilChanged } from 'rxjs/operators';
 
-import { TravelApiService, Destination, Location, TransportOptions, RoadConditions } from '../../services/travel-api.service';
+import { TravelApiService, Destination, Location, TransportOptions, RoadConditions, DestinationPhoto, DestinationVideo, InstagramVideo, DestinationExplore, ExploreTicket } from '../../services/travel-api.service';
 import { MapContainerComponent, TripRouteInfo } from '../../components/map-container/map-container';
 import { SearchAutocompleteComponent } from '../../components/search-autocomplete/search-autocomplete';
 import { TripPlannerComponent } from '../../components/trip-planner/trip-planner';
 import { AuthService } from '../../../../services/auth.service';
+import { HeroBanner } from '../../../../components/hero-banner/hero-banner';
 
 @Component({
   selector: 'app-destination-search',
   standalone: true,
-  imports: [CommonModule, FormsModule, MapContainerComponent, SearchAutocompleteComponent, TripPlannerComponent],
+  imports: [CommonModule, FormsModule, MapContainerComponent, SearchAutocompleteComponent, TripPlannerComponent, HeroBanner],
   template: `
     <div class="destination-search-page">
+    <div class="hero-wrap">
+      <app-hero-banner></app-hero-banner>
+    </div>
     <div class="destination-search-container">
       <div class="search-section">
         <div class="search-header">
@@ -92,14 +96,14 @@ import { AuthService } from '../../../../services/auth.service';
               <h5>Trains</h5>
               <div class="vehicle-item" *ngFor="let train of t.trains">
                 <span>{{ train.operator }} · {{ train.departureTime }}</span>
-                <span>{{ train.durationHours }}h · \${{ train.fareEstimateUsd }}</span>
+                <span>{{ train.durationHours }}h · {{ train.fareEstimate | currency: 'INR' : 'symbol' : '1.0-0' : 'en-IN' }}</span>
               </div>
             </div>
             <div class="vehicle-group" *ngIf="t.buses.length">
               <h5>Buses</h5>
               <div class="vehicle-item" *ngFor="let bus of t.buses">
                 <span>{{ bus.operator }} · {{ bus.departureTime }}</span>
-                <span>{{ bus.durationHours }}h · \${{ bus.fareEstimateUsd }}</span>
+                <span>{{ bus.durationHours }}h · {{ bus.fareEstimate | currency: 'INR' : 'symbol' : '1.0-0' : 'en-IN' }}</span>
               </div>
             </div>
             <p class="vehicle-disclaimer">{{ t.disclaimer }}</p>
@@ -135,24 +139,197 @@ import { AuthService } from '../../../../services/auth.service';
       </div>
     </div>
 
-    <div class="highlights-section" *ngIf="selectedDestination && topHighlights.length">
+    <div class="photos-section" *ngIf="selectedDestination && photos.length">
       <div class="highlights-header">
-        <h3>🌟 Highlights of {{ selectedDestination.name }}</h3>
-        <p>Most visited and popular tourist places</p>
+        <h3>📸 Photos of {{ selectedDestination.name }}</h3>
+        <p>{{ photosDisclaimer }}</p>
       </div>
-      <div class="highlights-grid">
-        <div class="highlight-card" *ngFor="let place of topHighlights" (click)="onLocationSelected(place)">
-          <div class="highlight-icon">{{ highlightIcon(place.type) }}</div>
-          <div class="highlight-body">
-            <h4>{{ place.name }}</h4>
-            <p class="highlight-type">{{ place.type | titlecase }}</p>
-            <div class="highlight-meta">
-              <span *ngIf="place.rating">⭐ {{ place.rating }}/5</span>
-              <span *ngIf="place.reviewsCount">👥 {{ place.reviewsCount | number }} reviews</span>
-            </div>
+      <div class="photos-grid">
+        <figure class="photo-card" *ngFor="let photo of photos" [style.background-color]="photo.color">
+          <a [href]="photo.sourceUrl" target="_blank" rel="noopener noreferrer">
+            <img [src]="photo.thumbUrl" [alt]="photo.alt" loading="lazy" />
+          </a>
+          <figcaption>
+            Photo by
+            <a [href]="photo.photographerUrl" target="_blank" rel="noopener noreferrer">{{ photo.photographer }}</a>
+            on {{ photo.provider | titlecase }}
+          </figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <div class="photos-section" *ngIf="selectedDestination && videos.length">
+      <div class="highlights-header">
+        <h3>🎬 Travel videos of {{ selectedDestination.name }}</h3>
+        <p>{{ videosDisclaimer }}</p>
+      </div>
+      <div class="videos-grid">
+        <a class="video-card" *ngFor="let video of videos" [href]="video.url" target="_blank" rel="noopener noreferrer">
+          <div class="video-thumb">
+            <img *ngIf="video.thumbUrl" [src]="video.thumbUrl" [alt]="video.title" loading="lazy" />
+            <span class="video-play">▶</span>
           </div>
-        </div>
+          <div class="video-body">
+            <h4>{{ video.title }}</h4>
+            <p>{{ video.channel }}<span *ngIf="video.publishedAt"> · {{ video.publishedAt | date: 'MMM y' }}</span></p>
+          </div>
+        </a>
       </div>
+    </div>
+
+    <div class="photos-section" *ngIf="selectedDestination && instagramVideos.length">
+      <div class="highlights-header">
+        <h3>📷 Instagram videos · #{{ instagramHashtag }}</h3>
+        <p>{{ instagramDisclaimer }}</p>
+      </div>
+      <div class="ig-grid">
+        <figure class="ig-card" *ngFor="let video of instagramVideos">
+          <video [src]="video.videoUrl" controls muted playsinline preload="metadata"></video>
+          <figcaption>
+            <a [href]="video.permalink" target="_blank" rel="noopener noreferrer">View on Instagram</a>
+            <span *ngIf="video.timestamp"> · {{ video.timestamp | date: 'MMM d, y' }}</span>
+          </figcaption>
+        </figure>
+      </div>
+    </div>
+
+    <div class="highlights-section" *ngIf="selectedDestination && (exploreLoading || explore || exploreError)">
+      <div class="explore-header">
+        <div class="highlights-header">
+          <h3>🌟 Explore {{ selectedDestination.name }}</h3>
+          <p>
+            Popular places with ticket details, treks and nearby getaways — real places, verified on OpenStreetMap
+            <span *ngIf="explore?.generatedAt"> · Updated {{ explore!.generatedAt | date: 'MMM d, h:mm a' }}</span>
+          </p>
+        </div>
+        <button
+          *ngIf="explore && explore.source !== 'none'"
+          class="explore-btn"
+          (click)="refreshExplore()"
+          [disabled]="exploreLoading"
+          title="Look up places again instead of using saved results"
+        >
+          ↻ Refresh
+        </button>
+      </div>
+
+      <p class="explore-status" *ngIf="exploreLoading && !explore">
+        Finding popular places, treks and getaways… the first search for a destination can take up to a minute.
+      </p>
+      <p class="explore-status" *ngIf="exploreLoading && explore">↻ Refreshing — this can take up to a minute…</p>
+      <p class="explore-status" *ngIf="!exploreLoading && explore?.refreshFailed">
+        Couldn't refresh right now — showing the saved results. Please try again in a few minutes.
+      </p>
+      <div class="explore-status" *ngIf="!exploreLoading && (exploreError || explore?.source === 'none')">
+        <p>{{ exploreError ? "Couldn't reach the server to load popular places." : explore!.disclaimer }}</p>
+        <button *ngIf="exploreError || explore?.retryable" class="explore-btn" (click)="retryExplore()">↻ Try again</button>
+      </div>
+
+      <ng-container *ngIf="explore && explore.source !== 'none'">
+        <h4 class="explore-subhead" *ngIf="explore.places.length">🏛️ Popular places to visit</h4>
+        <div class="explore-grid">
+          <article class="explore-card" *ngFor="let place of explore.places">
+            <div class="explore-card-top">
+              <h5>{{ place.name }}</h5>
+              <span class="chip">{{ place.category }}</span>
+            </div>
+            <p class="explore-desc">{{ place.description }}</p>
+
+            <div class="ticket-box">
+              <div class="ticket-title">
+                🎟️ Entry ticket
+                <span class="src-badge" [class.verified]="place.ticket.source === 'osm'">
+                  {{ place.ticket.source === 'osm' ? 'OpenStreetMap' : 'approx.' }}
+                </span>
+              </div>
+              <ng-container *ngIf="place.ticket.source === 'osm'">
+                <p class="ticket-line" *ngIf="place.ticket.free">Free entry</p>
+                <p class="ticket-line" *ngIf="!place.ticket.free && place.ticket.amountInr">
+                  {{ formatInr(place.ticket.amountInr) }}
+                  <span class="ticket-notes" *ngIf="place.ticket.osmCurrency !== 'INR'">({{ place.ticket.osmCharge }})</span>
+                </p>
+                <p class="ticket-line" *ngIf="!place.ticket.free && !place.ticket.amountInr">{{ place.ticket.osmCharge }}</p>
+              </ng-container>
+              <ng-container *ngIf="place.ticket.source === 'estimate'">
+                <p class="ticket-line" *ngIf="place.ticket.free">Free entry</p>
+                <table class="ticket-table" *ngIf="!place.ticket.free && hasEstimatedPrice(place.ticket)">
+                  <tr><td>Indian adult</td><td>{{ formatInr(place.ticket.indianAdult) }}</td></tr>
+                  <tr><td>Foreign adult</td><td>{{ formatInr(place.ticket.foreignAdult) }}</td></tr>
+                  <tr><td>Child</td><td>{{ formatInr(place.ticket.child) }}</td></tr>
+                </table>
+                <p class="ticket-line" *ngIf="!place.ticket.free && !hasEstimatedPrice(place.ticket)">
+                  {{ place.ticket.paidPerOsm ? 'Paid entry' : 'Price not known' }} — check at the venue
+                </p>
+                <p class="ticket-notes" *ngIf="place.ticket.notes">{{ place.ticket.notes }}</p>
+              </ng-container>
+            </div>
+
+            <ul class="explore-facts">
+              <li *ngIf="place.hours">
+                🕒 {{ place.hours }}
+                <span class="src-badge" [class.verified]="place.hoursSource === 'osm'">
+                  {{ place.hoursSource === 'osm' ? 'OpenStreetMap' : 'approx.' }}
+                </span>
+              </li>
+              <li>⏱️ Plan {{ place.suggestedDuration }}<span *ngIf="place.bestTimeToVisit"> · Best: {{ place.bestTimeToVisit }}</span></li>
+              <li>📍 {{ place.distanceKm }} km from centre</li>
+            </ul>
+            <div class="explore-links">
+              <a [href]="place.mapsUrl" target="_blank" rel="noopener noreferrer">Open in Maps</a>
+              <a [href]="place.osmUrl" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>
+              <a *ngIf="place.website" [href]="place.website" target="_blank" rel="noopener noreferrer">Official site</a>
+            </div>
+          </article>
+        </div>
+
+        <h4 class="explore-subhead" *ngIf="explore.treks.length">🥾 Nearby treks</h4>
+        <div class="explore-grid">
+          <article class="explore-card" *ngFor="let trek of explore.treks">
+            <div class="explore-card-top">
+              <h5>{{ trek.name }}</h5>
+              <span class="chip difficulty" [attr.data-level]="trek.difficulty">{{ trek.difficulty }}</span>
+            </div>
+            <p class="explore-desc">{{ trek.description }}</p>
+            <ul class="explore-facts">
+              <li>⏱️ {{ trek.duration }}<span *ngIf="trek.trailLengthKm"> · ~{{ trek.trailLengthKm }} km trail</span> <span class="src-badge">approx.</span></li>
+              <li>🚩 Starts at {{ trek.startPoint }}</li>
+              <li *ngIf="trek.elevationM">⛰️ {{ trek.elevationM | number }} m elevation <span class="src-badge verified">OpenStreetMap</span></li>
+              <li *ngIf="trek.bestSeason">🗓️ Best season: {{ trek.bestSeason }}</li>
+              <li>📍 {{ trek.distanceKm }} km from {{ selectedDestination.name }}</li>
+            </ul>
+            <div class="explore-links">
+              <a [href]="trek.mapsUrl" target="_blank" rel="noopener noreferrer">Open in Maps</a>
+              <a [href]="trek.osmUrl" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>
+            </div>
+          </article>
+        </div>
+
+        <h4 class="explore-subhead" *ngIf="explore.nearby.length">🧭 Nearby getaways</h4>
+        <div class="explore-grid">
+          <article class="explore-card" *ngFor="let spot of explore.nearby">
+            <div class="explore-card-top">
+              <h5>{{ spot.name }}</h5>
+              <span class="chip">{{ spot.distanceKm }} km</span>
+            </div>
+            <p class="explore-desc">{{ spot.description }}</p>
+            <ul class="explore-facts">
+              <li>✨ Best for: {{ spot.bestFor }}</li>
+              <li>🛏️ {{ spot.suggestedStay }}</li>
+            </ul>
+            <div class="explore-links">
+              <a [href]="spot.mapsUrl" target="_blank" rel="noopener noreferrer">Open in Maps</a>
+              <a [href]="spot.osmUrl" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>
+            </div>
+          </article>
+        </div>
+
+        <p class="explore-disclaimer">
+          ⚠️ {{ explore.disclaimer }}
+          <span *ngIf="explore.droppedUnverified">
+            {{ explore.droppedUnverified }} suggestion(s) couldn't be confirmed on OpenStreetMap and were left out.
+          </span>
+        </p>
+      </ng-container>
     </div>
 
     <div class="planner-section" *ngIf="selectedDestination">
@@ -235,60 +412,374 @@ import { AuthService } from '../../../../services/auth.service';
         color: var(--travel-ink-soft, #5c6a63);
       }
 
-      .highlights-grid {
+      .photos-section {
+        max-width: 1600px;
+        margin: 24px auto 0;
+        background: var(--travel-white, #fff);
+        border-radius: 28px;
+        padding: 28px;
+        box-shadow: var(--travel-shadow, 0 20px 45px rgba(31, 77, 62, 0.12));
+      }
+
+      .photos-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
         gap: 16px;
       }
 
-      .highlight-card {
-        display: flex;
-        gap: 12px;
-        padding: 16px;
+      .photo-card {
+        margin: 0;
+        border-radius: 16px;
+        overflow: hidden;
+        position: relative;
+        aspect-ratio: 4 / 3;
+      }
+
+      .photo-card img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+        transition: transform 0.3s ease;
+      }
+
+      .photo-card:hover img {
+        transform: scale(1.04);
+      }
+
+      .photo-card figcaption {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        padding: 18px 10px 8px;
+        font-size: 11px;
+        color: #fff;
+        background: linear-gradient(transparent, rgba(0, 0, 0, 0.65));
+      }
+
+      .photo-card figcaption a {
+        color: #fff;
+        font-weight: 600;
+      }
+
+      .videos-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+        gap: 16px;
+      }
+
+      .video-card {
+        display: block;
+        text-decoration: none;
+        color: inherit;
+        border-radius: 16px;
+        overflow: hidden;
         background: var(--travel-cream, #faf5ec);
-        border: 2px solid transparent;
-        border-radius: 18px;
-        cursor: pointer;
-        transition: all 0.2s;
+        transition: transform 0.2s ease;
       }
 
-      .highlight-card:hover {
-        border-color: var(--travel-terracotta, #f2643c);
-        background: var(--travel-white, #fff);
-        box-shadow: 0 10px 24px rgba(31, 77, 62, 0.12);
-        transform: translateY(-2px);
+      .video-card:hover {
+        transform: translateY(-3px);
       }
 
-      .highlight-icon {
-        font-size: 28px;
-        line-height: 1;
-        flex-shrink: 0;
+      .video-thumb {
+        position: relative;
+        aspect-ratio: 16 / 9;
+        background: #000;
       }
 
-      .highlight-body h4 {
-        margin: 0 0 2px 0;
+      .video-thumb img {
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        display: block;
+      }
+
+      .video-play {
+        position: absolute;
+        inset: 0;
+        margin: auto;
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.6);
+        color: #fff;
+        font-size: 18px;
+      }
+
+      .video-body {
+        padding: 10px 12px 12px;
+      }
+
+      .video-body h4 {
+        margin: 0 0 4px 0;
         font-size: 14px;
+        font-weight: 600;
+        line-height: 1.35;
+        color: var(--travel-ink, #1c2621);
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+
+      .video-body p {
+        margin: 0;
+        font-size: 12px;
+        color: var(--travel-ink-soft, #5c6a63);
+      }
+
+      .ig-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 16px;
+      }
+
+      .ig-card {
+        margin: 0;
+        border-radius: 16px;
+        overflow: hidden;
+        background: var(--travel-cream, #faf5ec);
+      }
+
+      .ig-card video {
+        width: 100%;
+        aspect-ratio: 9 / 16;
+        object-fit: cover;
+        display: block;
+        background: #000;
+      }
+
+      .ig-card figcaption {
+        padding: 8px 12px 10px;
+        font-size: 12px;
+        color: var(--travel-ink-soft, #5c6a63);
+      }
+
+      .ig-card figcaption a {
         font-weight: 600;
         color: var(--travel-ink, #1c2621);
       }
 
-      .highlight-type {
-        margin: 0 0 6px 0;
+      .explore-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 16px;
+      }
+
+      .explore-btn {
+        flex-shrink: 0;
+        padding: 8px 14px;
+        border: 1.5px solid var(--travel-terracotta, #f2643c);
+        border-radius: 999px;
+        background: transparent;
+        color: var(--travel-terracotta, #f2643c);
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s, color 0.2s;
+      }
+
+      .explore-btn:hover:not(:disabled) {
+        background: var(--travel-terracotta, #f2643c);
+        color: #fff;
+      }
+
+      .explore-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+
+      .explore-status {
+        margin: 0;
+        font-size: 14px;
+        color: var(--travel-ink-soft, #5c6a63);
+      }
+
+      .explore-status p {
+        margin: 0 0 12px 0;
+      }
+
+      .explore-subhead {
+        margin: 22px 0 12px 0;
+        font-size: 16px;
+        font-weight: 700;
+        color: var(--travel-ink, #1c2621);
+      }
+
+      .explore-subhead:first-of-type {
+        margin-top: 0;
+      }
+
+      .explore-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 16px;
+      }
+
+      .explore-card {
+        display: flex;
+        flex-direction: column;
+        padding: 16px;
+        background: var(--travel-cream, #faf5ec);
+        border-radius: 18px;
+      }
+
+      .explore-card-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 8px;
+      }
+
+      .explore-card-top h5 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 700;
+        color: var(--travel-ink, #1c2621);
+      }
+
+      .chip {
+        flex-shrink: 0;
+        padding: 2px 8px;
+        border-radius: 999px;
         font-size: 11px;
         font-weight: 600;
         color: var(--travel-terracotta, #f2643c);
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
+        background: rgba(242, 100, 60, 0.1);
+        white-space: nowrap;
       }
 
-      .highlight-meta {
+      .chip.difficulty[data-level='Easy'] {
+        color: #1f7a4d;
+        background: rgba(31, 122, 77, 0.12);
+      }
+
+      .chip.difficulty[data-level='Moderate'] {
+        color: #a86a00;
+        background: rgba(168, 106, 0, 0.12);
+      }
+
+      .chip.difficulty[data-level='Difficult'] {
+        color: #b3261e;
+        background: rgba(179, 38, 30, 0.12);
+      }
+
+      .explore-desc {
+        margin: 8px 0 10px 0;
+        font-size: 13px;
+        line-height: 1.45;
+        color: var(--travel-ink-soft, #5c6a63);
+      }
+
+      .ticket-box {
+        padding: 10px 12px;
+        margin-bottom: 10px;
+        background: var(--travel-white, #fff);
+        border-radius: 12px;
+      }
+
+      .ticket-title {
         display: flex;
-        gap: 10px;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 6px;
         font-size: 12px;
+        font-weight: 700;
+        color: var(--travel-ink, #1c2621);
+      }
+
+      .ticket-line {
+        margin: 0;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--travel-ink, #1c2621);
+      }
+
+      .ticket-table {
+        width: 100%;
+        font-size: 13px;
+        border-collapse: collapse;
+      }
+
+      .ticket-table td {
+        padding: 2px 0;
+        color: var(--travel-ink-soft, #5c6a63);
+      }
+
+      .ticket-table td:last-child {
+        text-align: right;
+        font-weight: 600;
+        color: var(--travel-ink, #1c2621);
+      }
+
+      .ticket-notes {
+        margin: 6px 0 0 0;
+        font-size: 11px;
+        color: var(--travel-ink-soft, #5c6a63);
+      }
+
+      .src-badge {
+        margin-left: 4px;
+        padding: 1px 6px;
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 600;
+        color: #8a5a00;
+        background: rgba(168, 106, 0, 0.12);
+        white-space: nowrap;
+      }
+
+      .src-badge.verified {
+        color: #1f7a4d;
+        background: rgba(31, 122, 77, 0.12);
+      }
+
+      .explore-facts {
+        margin: 0 0 10px 0;
+        padding: 0;
+        list-style: none;
+        font-size: 12px;
+        line-height: 1.7;
+        color: var(--travel-ink-soft, #5c6a63);
+      }
+
+      .explore-links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        margin-top: auto;
+        font-size: 12px;
+        font-weight: 600;
+      }
+
+      .explore-links a {
+        color: var(--travel-terracotta, #f2643c);
+        text-decoration: none;
+      }
+
+      .explore-links a:hover {
+        text-decoration: underline;
+      }
+
+      .explore-disclaimer {
+        margin: 18px 0 0 0;
+        font-size: 12px;
+        line-height: 1.5;
         color: var(--travel-ink-soft, #5c6a63);
       }
     `,
     `
+      .hero-wrap {
+        max-width: 1600px;
+        margin: 0 auto;
+      }
+
       .destination-search-container {
         display: grid;
         grid-template-columns: 350px 1fr;
@@ -859,8 +1350,17 @@ export class DestinationSearchComponent implements OnInit, OnDestroy {
   originPlace: Destination | null = null;
   selectedLocation: any = null;
   locations: any[] = [];
-  topHighlights: any[] = [];
+  explore: DestinationExplore | null = null;
+  exploreLoading = false;
+  exploreError = false;
   currentWeather: any = null;
+  photos: DestinationPhoto[] = [];
+  photosDisclaimer = '';
+  videos: DestinationVideo[] = [];
+  videosDisclaimer = '';
+  instagramVideos: InstagramVideo[] = [];
+  instagramHashtag = '';
+  instagramDisclaimer = '';
 
   tripRouteInfo: TripRouteInfo | null = null;
   transportOptions: TransportOptions | null = null;
@@ -949,6 +1449,96 @@ export class DestinationSearchComponent implements OnInit, OnDestroy {
     this.selectedDestination = destination;
     this.selectedLocation = null;
     this.loadDestinationData(destination.id);
+    this.loadPhotos(destination);
+    this.loadVideos(destination);
+    this.loadInstagramVideos(destination);
+    this.loadExplore(destination);
+  }
+
+  private loadExplore(destination: Destination, refresh = false) {
+    // On refresh, keep showing the current results until the new ones arrive.
+    if (!refresh) this.explore = null;
+    this.exploreLoading = true;
+    this.exploreError = false;
+    this.travelApi.getDestinationExplore(destination.id, refresh).subscribe({
+      next: (response) => {
+        // Ignore a late response for a destination the user has already moved away from.
+        if (this.selectedDestination?.id !== destination.id) return;
+        this.explore = response.data ?? null;
+        this.exploreLoading = false;
+      },
+      error: (err) => {
+        console.error('Error loading explore data:', err);
+        if (this.selectedDestination?.id !== destination.id) return;
+        this.exploreLoading = false;
+        // A failed refresh keeps the previous results visible; only a failed first load shows the error.
+        if (!this.explore) this.exploreError = true;
+      },
+    });
+  }
+
+  /** "Try again" after a failed lookup — failures aren't cached server-side, so a normal request retries. */
+  retryExplore() {
+    if (this.selectedDestination) this.loadExplore(this.selectedDestination);
+  }
+
+  /** "Refresh" loaded results — asks the server to skip its cache. */
+  refreshExplore() {
+    if (this.selectedDestination && !this.exploreLoading) this.loadExplore(this.selectedDestination, true);
+  }
+
+  hasEstimatedPrice(ticket: ExploreTicket): boolean {
+    return [ticket.indianAdult, ticket.foreignAdult, ticket.child].some((p) => typeof p === 'number');
+  }
+
+  /** ₹1,234 with Indian digit grouping; "Free" for 0; "—" when unknown. */
+  formatInr(amount: number | null | undefined): string {
+    if (amount === null || amount === undefined) return '—';
+    if (amount === 0) return 'Free';
+    return formatCurrency(amount, 'en-IN', '₹', 'INR', '1.0-0');
+  }
+
+  private loadInstagramVideos(destination: Destination) {
+    this.instagramVideos = [];
+    // Hashtags are per place name only (#chandigarh), not "name, country".
+    this.travelApi.getDestinationInstagramVideos(destination.name).subscribe({
+      next: (response) => {
+        // Ignore a late response for a destination the user has already moved away from.
+        if (this.selectedDestination?.id !== destination.id) return;
+        this.instagramVideos = response.data?.videos ?? [];
+        this.instagramHashtag = response.data?.hashtag ?? '';
+        this.instagramDisclaimer = response.data?.disclaimer ?? '';
+      },
+      error: (err) => console.error('Error loading Instagram videos:', err),
+    });
+  }
+
+  private loadVideos(destination: Destination) {
+    this.videos = [];
+    const query = [destination.name, destination.country].filter(Boolean).join(', ');
+    this.travelApi.getDestinationVideos(query).subscribe({
+      next: (response) => {
+        // Ignore a late response for a destination the user has already moved away from.
+        if (this.selectedDestination?.id !== destination.id) return;
+        this.videos = response.data?.videos ?? [];
+        this.videosDisclaimer = response.data?.disclaimer ?? '';
+      },
+      error: (err) => console.error('Error loading videos:', err),
+    });
+  }
+
+  private loadPhotos(destination: Destination) {
+    this.photos = [];
+    const query = [destination.name, destination.country].filter(Boolean).join(', ');
+    this.travelApi.getDestinationPhotos(query).subscribe({
+      next: (response) => {
+        // Ignore a late response for a destination the user has already moved away from.
+        if (this.selectedDestination?.id !== destination.id) return;
+        this.photos = response.data?.photos ?? [];
+        this.photosDisclaimer = response.data?.disclaimer ?? '';
+      },
+      error: (err) => console.error('Error loading photos:', err),
+    });
   }
 
   loadDestinationData(destinationId: string) {
@@ -960,7 +1550,6 @@ export class DestinationSearchComponent implements OnInit, OnDestroy {
           description: loc.category || loc.type,
         }));
         this.calculateLocationStats();
-        this.calculateTopHighlights();
       },
       error: (err) => console.error('Error loading locations:', err),
     });
@@ -982,24 +1571,6 @@ export class DestinationSearchComponent implements OnInit, OnDestroy {
     this.gemCount = this.locations.filter((l) => l.type === 'hidden_gem').length;
   }
 
-  /**
-   * Most-visited/popular tourist places for the "Highlights" section — the
-   * destination's attractions and hidden gems (restaurants excluded, since
-   * "tourist places" means sights, not dining), ranked by review volume then
-   * rating, capped to keep the section skimmable.
-   */
-  private calculateTopHighlights() {
-    this.topHighlights = this.locations
-      .filter((l) => l.type === 'tourist_site' || l.type === 'attraction' || l.type === 'hidden_gem')
-      .slice()
-      .sort((a, b) => (b.reviewsCount || 0) - (a.reviewsCount || 0) || (b.rating || 0) - (a.rating || 0))
-      .slice(0, 8);
-  }
-
-  highlightIcon(type: string): string {
-    return { tourist_site: '🏛️', attraction: '🎪', hidden_gem: '💎' }[type] || '📍';
-  }
-
   getLocationCount(destinationId: string): number {
     if (!this.locationCounts.has(destinationId)) {
       this.locationCounts.set(destinationId, Math.floor(Math.random() * 20 + 10));
@@ -1011,8 +1582,13 @@ export class DestinationSearchComponent implements OnInit, OnDestroy {
     this.selectedDestination = null;
     this.originPlace = null;
     this.locations = [];
-    this.topHighlights = [];
+    this.explore = null;
+    this.exploreLoading = false;
+    this.exploreError = false;
     this.currentWeather = null;
+    this.photos = [];
+    this.videos = [];
+    this.instagramVideos = [];
     this.selectedLocation = null;
     this.tripRouteInfo = null;
     this.transportOptions = null;

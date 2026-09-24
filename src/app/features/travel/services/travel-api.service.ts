@@ -83,7 +83,8 @@ export interface TrainOption {
   departureTime: string;
   durationHours: number;
   classOptions: string[];
-  fareEstimateUsd: number;
+  /** Approximate fare, in TransportOptions.currency (INR). */
+  fareEstimate: number;
   seatsAvailable: number;
 }
 
@@ -93,7 +94,8 @@ export interface BusOption {
   departureTime: string;
   durationHours: number;
   busType: string;
-  fareEstimateUsd: number;
+  /** Approximate fare, in TransportOptions.currency (INR). */
+  fareEstimate: number;
   seatsAvailable: number;
 }
 
@@ -101,6 +103,7 @@ export interface TransportOptions {
   trains: TrainOption[];
   buses: BusOption[];
   disclaimer: string;
+  currency: string;
 }
 
 export interface RoadConditions {
@@ -124,6 +127,132 @@ export interface WeatherDay {
   tempMin: number;
   condition: string;
   icon: string;
+}
+
+export interface DestinationPhoto {
+  id: string;
+  url: string;
+  thumbUrl: string;
+  alt: string;
+  width: number;
+  height: number;
+  color: string | null;
+  photographer: string;
+  photographerUrl: string | null;
+  sourceUrl: string | null;
+  provider: 'unsplash' | 'pexels';
+}
+
+export interface DestinationPhotos {
+  source: 'unsplash' | 'pexels' | 'none';
+  disclaimer: string;
+  photos: DestinationPhoto[];
+}
+
+export interface DestinationVideo {
+  id: string;
+  title: string;
+  channel: string;
+  publishedAt: string | null;
+  thumbUrl: string | null;
+  url: string;
+}
+
+export interface DestinationVideos {
+  source: 'youtube' | 'none';
+  disclaimer: string;
+  videos: DestinationVideo[];
+}
+
+export interface InstagramVideo {
+  id: string;
+  videoUrl: string;
+  permalink: string;
+  timestamp: string | null;
+}
+
+export interface DestinationInstagramVideos {
+  source: 'instagram' | 'none';
+  hashtag: string | null;
+  disclaimer: string;
+  videos: InstagramVideo[];
+}
+
+/** Where a value came from: OpenStreetMap's own tags, or an AI estimate. */
+export type ExploreValueSource = 'osm' | 'estimate';
+
+export interface ExploreTicket {
+  source: ExploreValueSource;
+  free: boolean;
+  /** Raw OSM `charge` tag, e.g. "12 EUR/person" (only when source is 'osm'). */
+  osmCharge?: string;
+  /** Currency of `osmCharge`, when it could be parsed. */
+  osmCurrency?: string | null;
+  /** `osmCharge` converted to INR at the live rate; null if it couldn't be parsed/converted. */
+  amountInr?: number | null;
+  /** OSM says entry is paid but gives no amount. */
+  paidPerOsm?: boolean;
+  /** Estimated prices in INR; null when unknown. */
+  indianAdult?: number | null;
+  foreignAdult?: number | null;
+  child?: number | null;
+  notes?: string | null;
+}
+
+interface ExploreLocated {
+  lat: number;
+  lng: number;
+  /** Straight-line distance from the destination centre. */
+  distanceKm: number;
+  osmUrl: string;
+  mapsUrl: string;
+}
+
+export interface ExplorePlace extends ExploreLocated {
+  name: string;
+  category: string;
+  description: string;
+  ticket: ExploreTicket;
+  hours: string | null;
+  hoursSource: ExploreValueSource | null;
+  suggestedDuration: string;
+  bestTimeToVisit: string | null;
+  website: string | null;
+}
+
+export interface ExploreTrek extends ExploreLocated {
+  name: string;
+  startPoint: string;
+  trailLengthKm: number | null;
+  difficulty: 'Easy' | 'Moderate' | 'Difficult';
+  duration: string;
+  bestSeason: string | null;
+  description: string;
+  /** Summit/trail elevation from OSM, when tagged. */
+  elevationM: number | null;
+}
+
+export interface ExploreNearby extends ExploreLocated {
+  name: string;
+  description: string;
+  bestFor: string;
+  suggestedStay: string;
+}
+
+export interface DestinationExplore {
+  source: 'gemini+osm' | 'none';
+  places: ExplorePlace[];
+  treks: ExploreTrek[];
+  nearby: ExploreNearby[];
+  /** Suggestions left out because OpenStreetMap couldn't confirm them. */
+  droppedUnverified: number;
+  /** When this result was looked up (ISO); null when no result. */
+  generatedAt: string | null;
+  /** Whether retrying can help (false when e.g. the server has no API key). */
+  retryable: boolean;
+  /** Set when a refresh failed and these are the previously saved results. */
+  refreshFailed?: boolean;
+  disclaimer: string;
 }
 
 export interface ApiResponse<T> {
@@ -242,10 +371,35 @@ export class TravelApiService {
     );
   }
 
+  /** Popular places with ticket details, nearby treks and getaways — verified real places (see backend data/explore.js). */
+  getDestinationExplore(destinationId: string, refresh = false): Observable<ApiResponse<DestinationExplore>> {
+    // refresh=1 asks the server to skip its 7-day cache (it throttles this per destination).
+    const params = refresh ? new HttpParams().set('refresh', '1') : undefined;
+    return this.http.get<ApiResponse<DestinationExplore>>(`${this.apiUrl}/destinations/${destinationId}/explore`, { params });
+  }
+
   getHiddenGems(destinationId: string): Observable<ApiResponse<Location[]>> {
     return this.http.get<ApiResponse<Location[]>>(
       `${this.apiUrl}/destinations/${destinationId}/hidden-gems`,
     );
+  }
+
+  /** Landscape photos of a place (Unsplash, falling back to Pexels), proxied by the backend so API keys stay server-side. */
+  getDestinationPhotos(query: string, limit = 8): Observable<ApiResponse<DestinationPhotos>> {
+    const params = new HttpParams().set('q', query).set('limit', limit);
+    return this.http.get<ApiResponse<DestinationPhotos>>(`${this.apiUrl}/photos`, { params });
+  }
+
+  /** Travel videos about a place from YouTube, proxied by the backend so the API key stays server-side. */
+  getDestinationVideos(query: string, limit = 6): Observable<ApiResponse<DestinationVideos>> {
+    const params = new HttpParams().set('q', query).set('limit', limit);
+    return this.http.get<ApiResponse<DestinationVideos>>(`${this.apiUrl}/videos`, { params });
+  }
+
+  /** Top public Instagram videos for the place's hashtag (e.g. #chandigarh), proxied by the backend. */
+  getDestinationInstagramVideos(placeName: string, limit = 6): Observable<ApiResponse<DestinationInstagramVideos>> {
+    const params = new HttpParams().set('q', placeName).set('limit', limit);
+    return this.http.get<ApiResponse<DestinationInstagramVideos>>(`${this.apiUrl}/instagram/videos`, { params });
   }
 
   // ==================== LOCATION SEARCH (city / state / country) ====================

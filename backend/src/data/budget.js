@@ -1,4 +1,5 @@
 const { getDailyBudgetUsd, getFuelPriceUsdPerLiter, getMileageKmPerLiter, getFareUsdPerKm } = require('./costs');
+const { convertUsd } = require('./fx');
 
 /**
  * Builds an approximate budget breakdown for a trip.
@@ -9,8 +10,9 @@ const { getDailyBudgetUsd, getFuelPriceUsdPerLiter, getMileageKmPerLiter, getFar
  * @param {number} params.travelers - number of travelers
  * @param {string} [params.vehicleType] - 'car' | 'bike' | 'bus' | 'train' | 'flight'
  * @param {number} [params.distanceKm] - one-way travel distance, for fuel/fare estimate
+ * @param {object} params.fx - display currency + USD rate, from getDisplayFx()
  */
-function buildBudgetEstimate({ country, days, travelers, vehicleType, distanceKm }) {
+function buildBudgetEstimate({ country, days, travelers, vehicleType, distanceKm, fx }) {
   const dailyPerPerson = getDailyBudgetUsd(country);
 
   // Split the daily per-person baseline into rough categories.
@@ -28,7 +30,7 @@ function buildBudgetEstimate({ country, days, travelers, vehicleType, distanceKm
       const fuelPrice = getFuelPriceUsdPerLiter(country);
       const liters = (distanceKm * 2) / mileage; // round trip
       transport = liters * fuelPrice;
-      transportNote = `Estimated fuel cost for a round trip by ${vehicleType} (~${Math.round(liters)} L at ~$${fuelPrice.toFixed(2)}/L, local pump prices vary).`;
+      transportNote = `Estimated fuel cost for a round trip by ${vehicleType} (~${Math.round(liters)} L at ~₹${convertUsd(fuelPrice, fx)}/L, local pump prices vary).`;
     } else {
       const farePerKm = getFareUsdPerKm(vehicleType);
       if (farePerKm) {
@@ -38,28 +40,31 @@ function buildBudgetEstimate({ country, days, travelers, vehicleType, distanceKm
     }
   }
 
-  const total = accommodation + food + activities + misc + transport;
-  const cashBuffer = total * 0.15; // recommended contingency
-  const recommendedCash = total + cashBuffer;
-
-  const round = (n) => Math.round(n * 100) / 100;
+  // Convert each line item first and total the converted figures, so the
+  // displayed breakdown always adds up exactly to the displayed total.
+  const breakdown = {
+    accommodation: convertUsd(accommodation, fx),
+    food: convertUsd(food, fx),
+    activities: convertUsd(activities, fx),
+    transport: convertUsd(transport, fx),
+    misc: convertUsd(misc, fx),
+  };
+  const total = Object.values(breakdown).reduce((sum, n) => sum + n, 0);
+  const cashBuffer = Math.round(total * 0.15); // recommended contingency
 
   return {
-    currency: 'USD',
+    currency: fx.currency,
+    usdRate: fx.usdRate,
+    rateDate: fx.rateDate,
+    rateSource: fx.rateSource,
     days,
     travelers,
-    dailyBudgetPerPersonUsd: dailyPerPerson,
-    breakdown: {
-      accommodation: round(accommodation),
-      food: round(food),
-      activities: round(activities),
-      transport: round(transport),
-      misc: round(misc),
-    },
+    dailyBudgetPerPerson: convertUsd(dailyPerPerson, fx),
+    breakdown,
     transportNote,
-    total: round(total),
-    contingencyBuffer: round(cashBuffer),
-    recommendedCash: round(recommendedCash),
+    total,
+    contingencyBuffer: cashBuffer,
+    recommendedCash: total + cashBuffer,
     disclaimer:
       'Approximate planning estimate based on typical mid-range travel costs — actual prices vary by season, booking method, and personal spending habits.',
   };

@@ -174,7 +174,7 @@ function tripDaysBetween(startDate: string, endDate: string): number {
                   <td>{{ train.trainNumber }}</td>
                   <td>{{ train.departureTime }}</td>
                   <td>{{ train.durationHours }}h</td>
-                  <td>\${{ train.fareEstimateUsd }}</td>
+                  <td>{{ train.fareEstimate | currency: 'INR' : 'symbol' : '1.0-0' : 'en-IN' }}</td>
                   <td>{{ train.seatsAvailable }}</td>
                 </tr>
               </tbody>
@@ -191,7 +191,7 @@ function tripDaysBetween(startDate: string, endDate: string): number {
                   <td>{{ bus.busType }}</td>
                   <td>{{ bus.departureTime }}</td>
                   <td>{{ bus.durationHours }}h</td>
-                  <td>\${{ bus.fareEstimateUsd }}</td>
+                  <td>{{ bus.fareEstimate | currency: 'INR' : 'symbol' : '1.0-0' : 'en-IN' }}</td>
                   <td>{{ bus.seatsAvailable }}</td>
                 </tr>
               </tbody>
@@ -264,16 +264,21 @@ function tripDaysBetween(startDate: string, endDate: string): number {
           <div *ngIf="budget() as b">
             <p class="disclaimer">⚠️ {{ b.disclaimer }}</p>
             <div class="budget-rows">
-              <div class="budget-row"><span>🏨 Accommodation</span><span>\${{ b.breakdown.accommodation }}</span></div>
-              <div class="budget-row"><span>🍽️ Food</span><span>\${{ b.breakdown.food }}</span></div>
-              <div class="budget-row"><span>🎟️ Activities</span><span>\${{ b.breakdown.activities }}</span></div>
-              <div class="budget-row"><span>⛽ Transport / Fuel</span><span>\${{ b.breakdown.transport }}</span></div>
-              <div class="budget-row"><span>🧾 Miscellaneous</span><span>\${{ b.breakdown.misc }}</span></div>
-              <div class="budget-row total"><span>Total (estimated)</span><span>\${{ b.total }}</span></div>
-              <div class="budget-row buffer"><span>+ 15% contingency</span><span>\${{ b.contingencyBuffer }}</span></div>
-              <div class="budget-row cash"><span>💵 Recommended cash to carry</span><span>\${{ b.recommendedCash }}</span></div>
+              <div class="budget-row"><span>🏨 Accommodation</span><span>{{ b.breakdown.accommodation | currency: 'INR' : 'symbol' : '1.0-0' : 'en-IN' }}</span></div>
+              <div class="budget-row"><span>🍽️ Food</span><span>{{ b.breakdown.food | currency: 'INR' : 'symbol' : '1.0-0' : 'en-IN' }}</span></div>
+              <div class="budget-row"><span>🎟️ Activities</span><span>{{ b.breakdown.activities | currency: 'INR' : 'symbol' : '1.0-0' : 'en-IN' }}</span></div>
+              <div class="budget-row"><span>⛽ Transport / Fuel</span><span>{{ b.breakdown.transport | currency: 'INR' : 'symbol' : '1.0-0' : 'en-IN' }}</span></div>
+              <div class="budget-row"><span>🧾 Miscellaneous</span><span>{{ b.breakdown.misc | currency: 'INR' : 'symbol' : '1.0-0' : 'en-IN' }}</span></div>
+              <div class="budget-row total"><span>Total (estimated)</span><span>{{ b.total | currency: 'INR' : 'symbol' : '1.0-0' : 'en-IN' }}</span></div>
+              <div class="budget-row buffer"><span>+ 15% contingency</span><span>{{ b.contingencyBuffer | currency: 'INR' : 'symbol' : '1.0-0' : 'en-IN' }}</span></div>
+              <div class="budget-row cash"><span>💵 Recommended cash to carry</span><span>{{ b.recommendedCash | currency: 'INR' : 'symbol' : '1.0-0' : 'en-IN' }}</span></div>
             </div>
             <p class="transport-note">{{ b.transportNote }}</p>
+            <p class="transport-note">
+              Converted at ₹{{ b.usdRate | number: '1.2-2' }} per USD
+              <span *ngIf="b.rateSource === 'frankfurter' && b.rateDate">(ECB reference rate, {{ b.rateDate }})</span>
+              <span *ngIf="b.rateSource === 'fallback'">(approximate — live rate unavailable)</span>
+            </p>
           </div>
         </section>
       </div>

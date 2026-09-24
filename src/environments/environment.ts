@@ -33,9 +33,9 @@ export const environment = {
 
   // App Configuration
   app: {
-    name: 'Travel Planner',
+    name: 'Next Trip',
     version: '1.0.0',
-    defaultCurrency: 'USD',
+    defaultCurrency: 'INR',
   },
 
   // Cache Configuration

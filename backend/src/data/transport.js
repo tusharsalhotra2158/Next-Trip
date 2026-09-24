@@ -6,6 +6,8 @@
 // clearly labeled as an estimate — swap in a real aggregator once you have
 // commercial credentials.
 
+const { convertUsd } = require('./fx');
+
 function hashString(str) {
   let hash = 0;
   for (let i = 0; i < str.length; i++) {
@@ -37,7 +39,7 @@ const ROAD_NOTES = {
 // arbitrary-but-seeded duration so the tab still has something to show.
 const AVG_SPEED_KMH = { train: 60, bus: 42 };
 
-function mockTransportOptions(destinationId, dateStr, distanceKm) {
+function mockTransportOptions(destinationId, dateStr, distanceKm, fx) {
   const rand = seededRandom(hashString(destinationId + dateStr));
   const hasDistance = typeof distanceKm === 'number' && distanceKm > 0;
 
@@ -55,7 +57,7 @@ function mockTransportOptions(destinationId, dateStr, distanceKm) {
       departureTime: `${String(departureHour).padStart(2, '0')}:${rand() > 0.5 ? '00' : '30'}`,
       durationHours,
       classOptions: ['Sleeper', 'AC 3-Tier', 'AC 2-Tier'],
-      fareEstimateUsd: Math.round((8 + durationHours * 3 + rand() * 5) * 100) / 100,
+      fareEstimate: convertUsd(8 + durationHours * 3 + rand() * 5, fx),
       seatsAvailable: Math.floor(rand() * 80),
     };
   });
@@ -72,7 +74,7 @@ function mockTransportOptions(destinationId, dateStr, distanceKm) {
       departureTime: `${String(departureHour % 24).padStart(2, '0')}:${rand() > 0.5 ? '00' : '30'}`,
       durationHours,
       busType: rand() > 0.5 ? 'AC Sleeper' : 'Non-AC Seater',
-      fareEstimateUsd: Math.round((4 + durationHours * 1.5 + rand() * 3) * 100) / 100,
+      fareEstimate: convertUsd(4 + durationHours * 1.5 + rand() * 3, fx),
       seatsAvailable: Math.floor(rand() * 40),
     };
   });

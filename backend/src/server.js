@@ -12,7 +12,12 @@ const { suggestMinDays, buildItinerary } = require('./data/itinerary');
 const { mockTransportOptions, mockRoadConditions } = require('./data/transport');
 const { buildPackingList } = require('./data/packing');
 const { getDestinationNews } = require('./data/news');
+const { getDestinationPhotos } = require('./data/photos');
+const { getDestinationVideos } = require('./data/youtube');
+const { getDestinationInstagramVideos } = require('./data/instagram');
+const { getDestinationExplore } = require('./data/explore');
 const { buildBudgetEstimate } = require('./data/budget');
+const { getDisplayFx } = require('./data/fx');
 const { signup, login, authenticate } = require('./data/auth');
 
 const app = express();
@@ -35,7 +40,7 @@ app.use(
 app.use(express.json({ limit: '100kb' }));
 
 // General limiter for the whole API, plus a stricter one for routes that
-// proxy to metered/paid third-party APIs (Gemini, GNews) to bound cost/quota
+// proxy to metered/paid third-party APIs (Gemini, GNews, Unsplash/Pexels, YouTube, Instagram) to bound cost/quota
 // exposure from a single abusive client.
 app.use(
   rateLimit({
@@ -164,6 +169,16 @@ app.get('/api/v1/destinations/:id/attractions', (req, res) => {
     (l) => l.type === 'tourist_site' || l.type === 'attraction',
   );
   res.json(ok(locations, { count: locations.length }));
+});
+
+// Real popular places (with ticket details), nearby treks and nearby getaways,
+// suggested by Gemini and verified against OpenStreetMap (see data/explore.js).
+// `?refresh=1` bypasses the 7-day cache (throttled to once per 5 min per destination).
+app.get('/api/v1/destinations/:id/explore', externalApiLimiter, async (req, res) => {
+  const destination = destinations.find((d) => d.id === req.params.id);
+  if (!destination) return res.status(404).json(fail('Destination not found'));
+  const refresh = req.query.refresh === '1';
+  res.json(ok(await getDestinationExplore(destination, { refresh })));
 });
 
 app.get('/api/v1/destinations/:id/hidden-gems', (req, res) => {
@@ -463,13 +478,14 @@ app.get('/api/v1/destinations/:id/itinerary-suggestion', (req, res) => {
 
 // ==================== TRANSPORT (mock) ====================
 
-app.get('/api/v1/destinations/:id/transport', (req, res) => {
+app.get('/api/v1/destinations/:id/transport', async (req, res) => {
   const destination = destinations.find((d) => d.id === req.params.id);
   if (!destination) return res.status(404).json(fail('Destination not found'));
 
   const date = req.query.date || new Date().toISOString().split('T')[0];
   const distanceKm = req.query.distanceKm !== undefined ? Number(req.query.distanceKm) : undefined;
-  res.json(ok(mockTransportOptions(destination.id, date, distanceKm)));
+  const fx = await getDisplayFx();
+  res.json(ok({ ...mockTransportOptions(destination.id, date, distanceKm, fx), currency: fx.currency }));
 });
 
 app.get('/api/v1/routes/road-conditions', (req, res) => {
@@ -515,9 +531,43 @@ app.get('/api/v1/news', externalApiLimiter, async (req, res) => {
   res.json(ok(news));
 });
 
+// ==================== PHOTOS ====================
+
+app.get('/api/v1/photos', externalApiLimiter, async (req, res) => {
+  const query = (req.query.q || '').toString().trim().slice(0, 100);
+  if (!query) return res.status(400).json(fail('q query param is required', 400));
+
+  const limit = clampInt(req.query.limit, 8, 1, 20);
+  const photos = await getDestinationPhotos(query, limit);
+  res.json(ok(photos));
+});
+
+// ==================== VIDEOS (YouTube) ====================
+
+app.get('/api/v1/videos', externalApiLimiter, async (req, res) => {
+  const query = (req.query.q || '').toString().trim().slice(0, 100);
+  if (!query) return res.status(400).json(fail('q query param is required', 400));
+
+  const limit = clampInt(req.query.limit, 6, 1, 12);
+  const videos = await getDestinationVideos(query, limit);
+  res.json(ok(videos));
+});
+
+// ==================== INSTAGRAM (hashtag videos) ====================
+
+// `q` is the destination name; it's turned into a hashtag (e.g. "New Delhi" → #newdelhi).
+app.get('/api/v1/instagram/videos', externalApiLimiter, async (req, res) => {
+  const query = (req.query.q || '').toString().trim().slice(0, 100);
+  if (!query) return res.status(400).json(fail('q query param is required', 400));
+
+  const limit = clampInt(req.query.limit, 6, 1, 12);
+  const videos = await getDestinationInstagramVideos(query, limit);
+  res.json(ok(videos));
+});
+
 // ==================== BUDGET ====================
 
-app.get('/api/v1/budget-estimate', (req, res) => {
+app.get('/api/v1/budget-estimate', async (req, res) => {
   const destination = destinations.find((d) => d.id === req.query.destinationId);
   if (!destination) return res.status(404).json(fail('Destination not found'));
 
@@ -532,6 +582,7 @@ app.get('/api/v1/budget-estimate', (req, res) => {
     travelers,
     vehicleType,
     distanceKm,
+    fx: await getDisplayFx(),
   });
 
   res.json(ok(estimate));

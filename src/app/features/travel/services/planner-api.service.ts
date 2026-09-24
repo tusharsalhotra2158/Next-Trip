@@ -48,7 +48,8 @@ export interface TrainOption {
   departureTime: string;
   durationHours: number;
   classOptions: string[];
-  fareEstimateUsd: number;
+  /** Approximate fare, in TransportOptions.currency (INR). */
+  fareEstimate: number;
   seatsAvailable: number;
 }
 
@@ -58,7 +59,8 @@ export interface BusOption {
   departureTime: string;
   durationHours: number;
   busType: string;
-  fareEstimateUsd: number;
+  /** Approximate fare, in TransportOptions.currency (INR). */
+  fareEstimate: number;
   seatsAvailable: number;
 }
 
@@ -66,6 +68,7 @@ export interface TransportOptions {
   trains: TrainOption[];
   buses: BusOption[];
   disclaimer: string;
+  currency: string;
 }
 
 export interface RoadConditions {
@@ -97,10 +100,15 @@ export interface DestinationNews {
 }
 
 export interface BudgetEstimate {
+  /** Display currency for every amount below (INR). */
   currency: string;
+  /** Units of `currency` per 1 USD used for this estimate. */
+  usdRate: number;
+  rateDate: string | null;
+  rateSource: 'frankfurter' | 'fallback';
   days: number;
   travelers: number;
-  dailyBudgetPerPersonUsd: number;
+  dailyBudgetPerPerson: number;
   breakdown: {
     accommodation: number;
     food: number;
