@@ -1,0 +1,10 @@
+/* Only the animated flight path lives here: Tailwind can't declare the keyframes inline. */
+.flightPath {
+  animation: hero-dash 6s linear infinite;
+}
+
+@keyframes hero-dash {
+  to {
+    stroke-dashoffset: -160;
+  }
+}

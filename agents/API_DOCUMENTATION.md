@@ -1,12 +1,16 @@
-# Travel App Backend API Documentation
+# Next Trip API Documentation
 
 ## Base URL
 ```
-http://localhost:4000/api/v1
+http://localhost:3000/api/v1
 ```
 
+The API is served by Next.js Route Handlers (`src/app/api/v1/**/route.ts`) on the same origin as the app.
+
+> This document covers the original core endpoints. The API also includes auth (`/auth/signup`, `/auth/login`), location search (`/locations/*`), media (`/photos`, `/videos`, `/instagram/videos`), `/news`, `/budget-estimate`, and per-destination `explore`, `weather-outlook`, `itinerary-suggestion`, `transport` and `packing-list` routes. See `src/app/api/v1/` for the full list.
+
 ## Authentication
-Current implementation uses mock authentication. Add `Authorization: Bearer <token>` header for protected routes.
+Sign up with `POST /auth/signup`, then `POST /auth/login` to get a signed JWT. Send it as an `Authorization: Bearer <token>` header on trip and itinerary routes; the trip owner is taken from the token.
 
 ---
 
@@ -483,16 +487,16 @@ All errors follow this format:
 
 ```bash
 # Get popular destinations
-curl http://localhost:4000/api/v1/destinations/popular
+curl http://localhost:3000/api/v1/destinations/popular
 
 # Search destinations
-curl "http://localhost:4000/api/v1/destinations/search?q=paris"
+curl "http://localhost:3000/api/v1/destinations/search?q=paris"
 
 # Get restaurants in Paris
-curl http://localhost:4000/api/v1/destinations/dest_paris/restaurants
+curl http://localhost:3000/api/v1/destinations/dest_paris/restaurants
 
 # Create a trip
-curl -X POST http://localhost:4000/api/v1/trips \
+curl -X POST http://localhost:3000/api/v1/trips \
   -H "Content-Type: application/json" \
   -d '{
     "userId": "user_123",
@@ -504,10 +508,10 @@ curl -X POST http://localhost:4000/api/v1/trips \
   }'
 
 # Get weather forecast
-curl http://localhost:4000/api/v1/weather/forecast/dest_paris?days=5
+curl http://localhost:3000/api/v1/weather/forecast/dest_paris?days=5
 
 # Health check
-curl http://localhost:4000/api/v1/health
+curl http://localhost:3000/api/v1/health
 ```
 
 ### Using Postman
@@ -531,11 +535,9 @@ curl http://localhost:4000/api/v1/health
 ## Next Steps
 
 1. **Frontend Integration**
-   - Create Angular services to call these endpoints
-   - Build components for search, map, itinerary, etc.
+   - Browser client for these endpoints lives in `src/lib/api.ts`
 
 2. **Enhanced Features**
-   - Add authentication (JWT)
    - Real flight/bus pricing integration
    - Google Maps API integration
    - User reviews and ratings
@@ -548,7 +550,6 @@ curl http://localhost:4000/api/v1/health
 4. **API Enhancements**
    - Add pagination
    - Add filtering and sorting
-   - Rate limiting
    - Caching
 
 ---
@@ -556,21 +557,15 @@ curl http://localhost:4000/api/v1/health
 ## Server Structure
 
 ```
-src/server/
-├── config/
-│   └── database.ts         # Database models, initialization, demo data
-├── controllers/
-│   ├── destination.controller.ts
-│   ├── trip.controller.ts
-│   ├── route.controller.ts
-│   └── weather.controller.ts
-├── routes/
-│   └── travel.routes.ts    # All API route definitions
-└── utils/
-    └── helpers.ts          # Utility functions
-
 src/
-└── server.ts              # Main Express app setup
+├── app/api/v1/         # Route Handlers, one route.ts per endpoint
+└── server/
+    ├── data/           # Destinations, weather, budget, itinerary, media, auth, etc.
+    ├── handler.ts      # Rate limiting + central error handling wrapper
+    ├── http.ts         # ok()/fail() response envelopes, query and body helpers
+    ├── rateLimit.ts    # In-memory fixed-window rate limiter
+    ├── store.ts        # In-memory stores (reset on restart / serverless cold start)
+    └── tripStore.ts    # Trips, itineraries and ownership checks
 ```
 
 ---
@@ -578,10 +573,9 @@ src/
 ## Running the Server
 
 ```bash
-# Development
-npm run serve:ssr:guide-me
+npm run dev
 
-# The server will start on http://localhost:4000
-# API endpoints available at http://localhost:4000/api/v1
-# Health check: http://localhost:4000/api/v1/health
+# The app and API start on http://localhost:3000
+# API endpoints available at http://localhost:3000/api/v1
+# Health check: http://localhost:3000/api/v1/health
 ```

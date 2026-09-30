@@ -2,11 +2,11 @@
 
 Next Trip is a travel planning web app that helps you find a destination, understand what to expect once you're there, and put together a day-by-day itinerary — all in one place instead of juggling a search engine, a weather site, and a spreadsheet.
 
-Built with Angular 21 on the frontend and a lightweight Express API on the backend.
+Built with Next.js 16 (App Router, React 19, Tailwind CSS 4). The UI and the Travel API run in one app: the API is a set of Next.js Route Handlers under `/api/v1`.
 
 ## What it does
 
-- **Destination search** — search by name, or browse cascading country → state → city dropdowns backed by an offline geo dataset. A natural-language search mode ("quiet beach towns in Kerala") is also available via Gemini.
+- **Destination search** — search cities, states and countries by name, backed by an offline geo dataset. If nothing matches, an "Ask AI" fallback runs a natural-language search ("quiet beach towns in Kerala") via Gemini.
 - **Interactive maps** — view destinations, attractions, restaurants, and hidden gems on a Leaflet-powered map.
 - **Itinerary planning** — auto-generate a day-by-day plan that fits the recommended sights into the number of days you have, and edit each day afterward.
 - **Weather outlook** — real weather forecasts (via Open-Meteo) for your specific travel dates, used to plan activities and packing.
@@ -22,81 +22,73 @@ Built with Angular 21 on the frontend and a lightweight Express API on the backe
 - **Itinerary logic does the busy work.** Instead of guessing how many days a destination needs, the itinerary suggestion engine tells you the minimum days required and flags anything that won't fit.
 - **Weather-aware packing.** The packing list isn't generic — it's built from the actual forecast for your travel dates.
 - **Graceful degradation.** Optional third-party integrations (news, AI search, global city data) each have a sensible fallback, so the app stays usable even without API keys configured.
-- **Fast to run locally.** No database setup required — the backend keeps trip and itinerary data in memory, which is enough for prototyping, demos, or personal use.
+- **Fast to run locally.** No database setup required — the API keeps user, trip and itinerary data in memory, which is enough for prototyping, demos, or personal use.
 
 ## Project structure
 
 ```
 Next-Trip/
-├── src/app/
-│   ├── components/        # Login, signup, dashboard, header
-│   ├── features/travel/   # Destination search, map, trip planner
-│   ├── services/          # Auth and API services
-│   ├── guards/             # Route guards (auth)
-│   └── shared/maps/        # Map utilities, models, and directives
-└── backend/
-    └── src/
-        ├── server.js       # Express API entry point
-        └── data/           # Destinations, weather, budget, itinerary, etc.
+├── src/
+│   ├── app/
+│   │   ├── travel/search/   # Main page: destination search, map, trip planner
+│   │   ├── login/ signup/ dashboard/
+│   │   └── api/v1/          # Travel API (Route Handlers)
+│   ├── components/          # Header, footer, hero banner, auth guard
+│   │   └── travel/          # Map (Leaflet), search box, trip planner, page sections
+│   ├── lib/                 # Browser API client, shared types, auth context
+│   └── server/              # Server-only API logic: data sources, auth, rate limiting
+└── agents/API_DOCUMENTATION.md
 ```
 
 ## Getting started
 
 ### Prerequisites
 
-- Node.js and npm
-- Angular CLI (`npm install -g @angular/cli`), or use `npx ng`
+- Node.js 20.9 or later, and npm
 
 ### 1. Install dependencies
 
 ```bash
-npm install          # frontend, from the project root
-cd backend && npm install   # backend
+npm install
 ```
 
-### 2. Configure the backend (optional)
+### 2. Configure environment variables (optional)
 
-The app works out of the box with sample data. To enable live integrations, copy `backend/.env.example` to `backend/.env` and fill in the keys you want:
+The app works out of the box with sample data. To enable live integrations, copy `.env.example` to `.env.local` and fill in the keys you want. `.env.example` explains each variable; the main ones are:
 
 | Variable | Enables | Fallback without it |
 |---|---|---|
+| `JWT_SECRET` | Stable login sessions | Random secret per process; sessions end on restart |
 | `GNEWS_API_KEY` | Live destination news | Generic sample travel tips |
-| `CSC_API_KEY` | Global city/state/country search | Small sample city list |
-| `GEMINI_API_KEY` | Natural-language place search | No results, with a disclaimer |
+| `GEMINI_API_KEY` | AI place search and the Explore section | No results, with a disclaimer |
+| `UNSPLASH_ACCESS_KEY` / `PEXELS_API_KEY` | Destination photos | Photo gallery hidden |
+| `YOUTUBE_API_KEY` | Destination videos | Videos section hidden |
 
-### 3. Run the backend
+All of these are server-only and never reach the browser.
 
-```bash
-cd backend
-npm start            # or `npm run dev` for auto-restart on changes
-```
-
-The API listens on `http://localhost:4000/api/v1` by default (configurable via `PORT` in `.env`).
-
-### 4. Run the frontend
+### 3. Run the dev server
 
 ```bash
-ng serve
+npm run dev
 ```
 
-Open `http://localhost:4200/` in your browser. The app reloads automatically as you edit source files.
+Open `http://localhost:3000/`. The API is served from the same origin at `http://localhost:3000/api/v1` (health check: `/api/v1/health`).
 
 ## Building for production
 
 ```bash
-ng build
+npm run build
+npm start
 ```
 
-Build artifacts are output to the `dist/` directory.
-
-## Running tests
+## Linting
 
 ```bash
-ng test
+npm run lint
 ```
 
-Unit tests run via [Vitest](https://vitest.dev/).
+## Deploying to Netlify
 
-## Additional resources
+`netlify.toml` sets the build command and publish directory, and Netlify applies its Next.js adapter automatically. In the site's environment settings, add the variables from `.env.example`, including `JWT_SECRET` (required there: each serverless instance would otherwise sign sessions with a different secret).
 
-- [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli)
+In-memory data (users, trips, caches, rate-limit counters) is per serverless instance and resets on cold starts, so add a database before relying on accounts or trips in production.

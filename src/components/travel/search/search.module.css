@@ -1,0 +1,15 @@
+/* Modal entrance animation (keyframes aren't defined in the shared Tailwind theme). */
+.slideIn {
+  animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

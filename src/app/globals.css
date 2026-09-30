@@ -1,0 +1,50 @@
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+:root {
+  /* Modern travel theme — warm cream ground, deep forest primary, terracotta accent */
+  --travel-cream: #faf5ec;
+  --travel-cream-soft: #f3ecdf;
+  --travel-forest: #1f4d3e;
+  --travel-forest-dark: #163a2e;
+  --travel-terracotta: #f2643c;
+  --travel-terracotta-dark: #d8502b;
+  --travel-mustard: #f2b84b;
+  --travel-ink: #1c2621;
+  --travel-ink-soft: #5c6a63;
+  --travel-white: #ffffff;
+  --travel-border: #e7ddc9;
+  --travel-shadow: 0 20px 45px rgba(31, 77, 62, 0.12);
+}
+
+/* Theme tokens as Tailwind utilities, e.g. bg-cream, text-forest, border-line, shadow-travel, font-display. */
+@theme inline {
+  --color-cream: var(--travel-cream);
+  --color-cream-soft: var(--travel-cream-soft);
+  --color-forest: var(--travel-forest);
+  --color-forest-dark: var(--travel-forest-dark);
+  --color-terracotta: var(--travel-terracotta);
+  --color-terracotta-dark: var(--travel-terracotta-dark);
+  --color-mustard: var(--travel-mustard);
+  --color-ink: var(--travel-ink);
+  --color-ink-soft: var(--travel-ink-soft);
+  --color-line: var(--travel-border);
+  --shadow-travel: var(--travel-shadow);
+  --font-sans: var(--font-inter), "Roboto", sans-serif;
+  --font-display: var(--font-poppins), var(--font-inter), sans-serif;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--travel-cream);
+  color: var(--travel-ink);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5 {
+  font-family: var(--font-display);
+}
